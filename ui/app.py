@@ -37,8 +37,12 @@ if "customer" not in st.session_state:
         r = requests.post(f"{APP_URL}/login", json={"name": name.strip(), "phone": phone.strip()}, timeout=10)
         r.raise_for_status()
         st.session_state.customer = r.json()
-        st.session_state.history = []
-        st.session_state.pending = None
+        # 기억은 서버(pg)에 있다 — 지난 대화와, 떠날 때 열려 있던 확인 카드까지 복원
+        h = requests.get(f"{APP_URL}/history/{st.session_state.customer['thread_id']}", timeout=10)
+        h.raise_for_status()
+        restored = h.json()
+        st.session_state.history = [(m["role"], m["content"]) for m in restored["messages"]]
+        st.session_state.pending = restored["interrupt"]
         st.rerun()
     st.stop()
 
@@ -64,7 +68,7 @@ with st.sidebar:
             st.session_state.pop(key, None)
         st.rerun()
     st.divider()
-    st.markdown("**내 예약**")
+    st.markdown("**내 예약** — 누르면 그 예약으로 상담이 이어집니다")
     STATUS_BADGE = {"requested": "🕐 승인 대기", "confirmed": "✅ 확정",
                     "declined": "❌ 거절됨", "cancelled": "🚫 취소됨"}
     try:
@@ -72,10 +76,15 @@ with st.sidebar:
         if not mine["reservations"]:
             st.caption("예정된 예약이 없습니다.")
         for r in mine["reservations"]:
-            st.caption(
-                f"{r['res_date']} {r['res_time']} · {r['table']} · {r['party_size']}명  \n"
-                f"{STATUS_BADGE.get(r['status'], r['status'])}"
-            )
+            label = (f"{r['res_date']} {r['res_time']} · {r['table']} · {r['party_size']}명\n"
+                     f"{STATUS_BADGE.get(r['status'], r['status'])}")
+            if st.button(label, key=f"res-{r['reservation_id']}", use_container_width=True,
+                         disabled=st.session_state.pending is not None):
+                st.session_state.resume_message = (
+                    f"{r['res_date']} {r['res_time']} {r['table']} 예약"
+                    f"({r['reservation_id']}번) 관련해서 문의드려요."
+                )
+                st.rerun()
     except requests.RequestException:
         st.caption("예약 목록을 불러오지 못했습니다.")
     st.divider()
@@ -126,8 +135,12 @@ if st.session_state.pending:
             st.rerun()
 
 # ── 입력 → /chat 왕복 ────────────────────────────────────────────────
-if prompt := st.chat_input("예: 내일 저녁 7시에 4명 자리 있나요?",
-                           disabled=st.session_state.pending is not None):
+prompt = st.chat_input("예: 내일 저녁 7시에 4명 자리 있나요?",
+                       disabled=st.session_state.pending is not None)
+if not prompt:
+    # 사이드바의 내 예약 버튼이 대신 말해 준 경우
+    prompt = st.session_state.pop("resume_message", None)
+if prompt:
     st.session_state.history.append(("user", prompt))
     with st.chat_message("user"):
         st.markdown(prompt)
