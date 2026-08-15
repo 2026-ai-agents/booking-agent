@@ -1,8 +1,8 @@
-"""booking-agent ui — 손님 예약 화면 (v0.1).
+"""booking-agent ui — 손님 예약 화면 (v0.2).
 
 로그인(이름+전화, 인증이 아니라 식별)을 거치면 예약 상담 채팅이 열린다.
-thread는 손님마다 하나(cust-<id>)라 다시 로그인해도 같은 대화가 이어진다
-— 단 v0.1의 기억은 app 프로세스 메모리다. 재시작하면 전부 사라진다.
+thread는 손님마다 하나(cust-<id>)라 다시 로그인해도 같은 대화가 이어진다.
+v0.2부터 기억이 pg에 살아 서버를 재시작해도 이어진다.
 """
 
 import os
@@ -34,7 +34,7 @@ customer = st.session_state.customer
 
 with st.sidebar:
     st.title("🍽️ 소나무 — 예약")
-    st.caption("booking-agent v0.1 · LangGraph")
+    st.caption("booking-agent v0.2 · LangGraph")
     st.write(f"**{customer['name']}** 님 · `{customer['thread_id']}`")
     if st.button("로그아웃", use_container_width=True):
         del st.session_state.customer
