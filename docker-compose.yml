@@ -23,3 +23,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  ui:
+    build: ./ui
+    environment:
+      APP_URL: http://app:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - app
