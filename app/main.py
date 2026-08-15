@@ -3,7 +3,7 @@
 로그인은 인증이 아니라 식별이다: 이름+전화가 customers 행이 되고, 그
 id가 그래프 상태에 실려 도구 실행의 신원이 된다. 대화 thread는 손님마다
 하나(cust-<id>)가 기본 — 같은 손님이 다시 로그인하면 같은 대화가 이어진다.
-(단, v0.1의 기억은 프로세스 메모리라 재시작하면 전부 사라진다)
+v0.2부터 그 기억이 pg에 살아서, 재시작해도 이어진다.
 """
 
 import psycopg
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from agent.graph import graph
 from agent.tools import DATABASE_URL
 
-app = FastAPI(title="booking-agent", version="0.1")
+app = FastAPI(title="booking-agent", version="0.2")
 
 
 @app.get("/health")

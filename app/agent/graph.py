@@ -1,10 +1,13 @@
-"""예약 상담 그래프 — v0.1: 대화는 되지만, 기억은 프로세스 메모리에 산다.
+"""예약 상담 그래프 — v0.2: 기억이 PostgreSQL로 이사한다.
 
-diet-agent에서 완성한 모양(advisor ↔ tools 순환 + reducer + checkpointer)을
-그대로 딛고 시작한다. 이 저장소가 새로 얹는 것은 그래프 모양이 아니라
-**그 상태가 어디 사는가**다. v0.1의 MemorySaver는 프로세스 메모리라
-`docker compose restart app` 한 방에 모든 대화가 사라진다 — 이 결핍을
-겪는 것이 v0.1의 목적이고, v0.2가 PostgreSQL로 답한다.
+v0.1과 그래프 모양은 완전히 같다. 바뀐 것은 **상태의 거처** 하나다:
+MemorySaver(프로세스 메모리) → PostgresSaver(db 컨테이너). checkpoint가
+pg 테이블에 쌓이므로 `docker compose restart app`을 해도, app 컨테이너를
+지웠다 새로 만들어도, 같은 thread_id로 돌아오면 대화가 이어진다.
+
+setup()은 checkpoint 테이블 4개(checkpoints, checkpoint_writes,
+checkpoint_blobs, checkpoint_migrations)를 처음 한 번 만든다 — 도메인
+스키마(db/init)와 같은 db에 살아서, 시연 때 SQL로 열어 읽을 수 있다.
 
 diet-agent와 다른 점 하나: 상태에 customer_id가 실린다. 로그인에서 온
 신원을 그래프가 나르고, tools 노드가 도구 실행에 주입한다.
@@ -14,12 +17,13 @@ import operator
 from datetime import date
 from typing import Annotated, Literal, TypedDict
 
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from litellm import completion
+from psycopg_pool import ConnectionPool
 
 from agent.config import pick_model
-from agent.tools import OPEN_SLOTS, run_tool, tool_schemas
+from agent.tools import DATABASE_URL, OPEN_SLOTS, run_tool, tool_schemas
 
 SYSTEM_PROMPT = """당신은 한식당 '소나무'의 예약 상담사다. 손님과 대화하며 예약을 잡는다.
 
@@ -92,5 +96,9 @@ builder.add_edge(START, "advisor")
 builder.add_conditional_edges("advisor", route_after_advisor, {"tools": "tools", END: END})
 builder.add_edge("tools", "advisor")
 
-# v0.1의 결핍: MemorySaver는 프로세스 메모리다. 재시작하면 모든 thread가 증발한다.
-graph = builder.compile(checkpointer=MemorySaver())
+# v0.2: 상태의 거처가 pg로 옮겨진다. 이 세 줄이 재시작 생존의 전부다.
+pool = ConnectionPool(DATABASE_URL, kwargs={"autocommit": True})
+checkpointer = PostgresSaver(pool)
+checkpointer.setup()   # checkpoint 테이블이 없으면 만든다 (멱등)
+
+graph = builder.compile(checkpointer=checkpointer)
