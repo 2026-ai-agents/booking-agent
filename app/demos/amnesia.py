@@ -34,7 +34,11 @@ def turn(message: str) -> None:
     )
     r.raise_for_status()
     print(f"[손님] {message}")
-    print(f"[상담사] {r.json()['answer']}\n")
+    data = r.json()
+    if data.get("interrupt"):      # v0.3부터 예약 요청은 확인 카드에서 멈춘다
+        print(f"[확인 카드 대기] {data['interrupt']['requests']}\n")
+    else:
+        print(f"[상담사] {data['answer']}\n")
 
 
 if "--probe" in sys.argv:

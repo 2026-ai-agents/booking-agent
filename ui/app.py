@@ -25,6 +25,25 @@ def app_version() -> str:
     except requests.RequestException:
         return "?"
 
+def restore_conversation() -> None:
+    """기억은 서버(pg)에 있다 — 지난 대화와, 열려 있던 확인 카드까지 복원."""
+    h = requests.get(f"{APP_URL}/history/{st.session_state.customer['thread_id']}", timeout=10)
+    h.raise_for_status()
+    restored = h.json()
+    st.session_state.history = [(m["role"], m["content"]) for m in restored["messages"]]
+    st.session_state.pending = restored["interrupt"]
+
+
+# ── 새로고침 복원: URL의 손님 id로 로그인을 되살린다 ──────────────────
+if "customer" not in st.session_state and st.query_params.get("cid"):
+    try:
+        c = requests.get(f"{APP_URL}/customer/{st.query_params['cid']}", timeout=10)
+        c.raise_for_status()
+        st.session_state.customer = c.json()
+        restore_conversation()
+    except requests.RequestException:
+        st.query_params.clear()
+
 # ── 로그인: 이름+전화가 손님 식별자다 ─────────────────────────────────
 if "customer" not in st.session_state:
     st.title("🍽️ 한식당 소나무")
@@ -37,12 +56,8 @@ if "customer" not in st.session_state:
         r = requests.post(f"{APP_URL}/login", json={"name": name.strip(), "phone": phone.strip()}, timeout=10)
         r.raise_for_status()
         st.session_state.customer = r.json()
-        # 기억은 서버(pg)에 있다 — 지난 대화와, 떠날 때 열려 있던 확인 카드까지 복원
-        h = requests.get(f"{APP_URL}/history/{st.session_state.customer['thread_id']}", timeout=10)
-        h.raise_for_status()
-        restored = h.json()
-        st.session_state.history = [(m["role"], m["content"]) for m in restored["messages"]]
-        st.session_state.pending = restored["interrupt"]
+        st.query_params["cid"] = str(st.session_state.customer["customer_id"])
+        restore_conversation()
         st.rerun()
     st.stop()
 
@@ -66,6 +81,7 @@ with st.sidebar:
     if st.button("로그아웃", use_container_width=True):
         for key in ("customer", "history", "pending"):
             st.session_state.pop(key, None)
+        st.query_params.clear()
         st.rerun()
     st.divider()
     st.markdown("**내 예약** — 누르면 그 예약으로 상담이 이어집니다")

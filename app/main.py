@@ -11,6 +11,7 @@ confirmed/declined)이다. 그래프는 멈추지 않는다 — 행이 바뀔 �
 
 import os
 import re
+import secrets
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -23,7 +24,7 @@ from agent.tools import DATABASE_URL
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "changeme")
 
-app = FastAPI(title="booking-agent", version="1.1")
+app = FastAPI(title="booking-agent", version="1.2")
 
 
 @app.get("/health")
@@ -61,6 +62,18 @@ def login(body: LoginBody):
         conn.commit()
     customer_id, name = row
     return {"customer_id": customer_id, "name": name, "thread_id": f"cust-{customer_id}"}
+
+
+@app.get("/customer/{customer_id}")
+def customer(customer_id: int):
+    """새로고침한 화면이 로그인을 복원할 때 쓴다 — URL에는 id만 실린다."""
+    with psycopg.connect(DATABASE_URL) as conn:
+        row = conn.execute(
+            "SELECT id, name FROM customers WHERE id = %s", (customer_id,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="없는 손님이다")
+    return {"customer_id": row[0], "name": row[1], "thread_id": f"cust-{row[0]}"}
 
 
 @app.get("/history/{thread_id}")
@@ -143,11 +156,38 @@ def confirm(body: ConfirmBody):
     )
 
 
-# ── 사장 입장 (/admin/*) — 수업용 간이 인증: 비밀번호 헤더 하나 ────────
+# ── 사장 입장 (/admin/*) — 수업용 간이 인증 ──────────────────────────
+#
+# 비밀번호는 로그인 한 번에만 쓰고, 이후 왕복은 발급된 세션 토큰으로 한다.
+# 비밀번호를 화면의 URL이나 매 요청에 실어 나르지 않기 위해서다. 토큰은
+# 프로세스 메모리에 살므로 app이 재시작되면 전부 만료된다 — 그때는 다시
+# 로그인하는 것이 맞는 동작이다.
 
-def require_admin(x_admin_password: str = Header()):
-    if x_admin_password != ADMIN_PASSWORD:
+ADMIN_TOKENS: set[str] = set()
+
+
+class AdminLoginBody(BaseModel):
+    password: str
+
+
+@app.post("/admin/login")
+def admin_login(body: AdminLoginBody):
+    if body.password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="관리자 비밀번호가 틀렸다")
+    token = secrets.token_urlsafe(16)
+    ADMIN_TOKENS.add(token)
+    return {"token": token}
+
+
+def require_admin(
+    x_admin_password: str | None = Header(default=None),
+    x_admin_token: str | None = Header(default=None),
+):
+    if x_admin_password == ADMIN_PASSWORD:
+        return                                   # 데모·테스트용 직접 경로
+    if x_admin_token is not None and x_admin_token in ADMIN_TOKENS:
+        return
+    raise HTTPException(status_code=401, detail="관리자 인증 실패")
 
 
 @app.get("/admin/reservations", dependencies=[Depends(require_admin)])
