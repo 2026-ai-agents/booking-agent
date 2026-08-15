@@ -67,6 +67,20 @@ docker compose exec app python demos/admin_sql.py               # v1.0: 사장 �
 docker compose exec app python demos/time_travel.py             # v1.0: 과거 checkpoint에서 평행 재생
 ```
 
+## 데이터의 수명
+
+db 데이터(예약·대화 checkpoint)는 이름 있는 볼륨 `pgdata`에 삽니다.
+
+| 명령 | 데이터 |
+| --- | --- |
+| `docker compose restart` | 유지 |
+| `docker compose down` 후 `up` | **유지** (v1.2.0부터) |
+| `docker compose down -v` | 초기화 — 시드부터 다시 시작 |
+
+과거 태그(v0.1\~v1.1.0)의 compose에는 이 볼륨이 없어, 태그 체크아웃 후
+기동하면 항상 깨끗한 시드로 시작합니다. 릴리즈 사다리 재현에는 그쪽이
+의도된 동작입니다.
+
 ## 예약의 생애 (status)
 
 ```
