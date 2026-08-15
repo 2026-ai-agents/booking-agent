@@ -56,10 +56,25 @@ with st.sidebar:
             st.session_state.pop(key, None)
         st.rerun()
     st.divider()
+    st.markdown("**내 예약**")
+    STATUS_BADGE = {"requested": "🕐 승인 대기", "confirmed": "✅ 확정",
+                    "declined": "❌ 거절됨", "cancelled": "🚫 취소됨"}
+    try:
+        mine = requests.get(f"{APP_URL}/reservations/{customer['customer_id']}", timeout=10).json()
+        if not mine["reservations"]:
+            st.caption("예정된 예약이 없습니다.")
+        for r in mine["reservations"]:
+            st.caption(
+                f"{r['res_date']} {r['res_time']} · {r['table']} · {r['party_size']}명  \n"
+                f"{STATUS_BADGE.get(r['status'], r['status'])}"
+            )
+    except requests.RequestException:
+        st.caption("예약 목록을 불러오지 못했습니다.")
+    st.divider()
     st.markdown(
         "대화로 예약을 잡습니다.\n\n"
         "- 날짜·시간·인원을 말하면 빈 테이블을 찾아 드립니다\n"
-        "- 예약 실행 전에 확인 카드가 뜹니다\n"
+        "- 예약 실행·취소 전에 확인 카드가 뜹니다\n"
         "- 신청은 사장님 승인 후 확정됩니다"
     )
 
@@ -72,16 +87,19 @@ for role, content in st.session_state.history:
 if st.session_state.pending:
     req = st.session_state.pending["requests"][0]
     with st.chat_message("assistant"):
-        st.info(
-            f"**이대로 예약을 신청할까요?**\n\n"
-            f"- 날짜: {req.get('res_date')}  \n"
-            f"- 시간: {req.get('res_time')}  \n"
-            f"- 테이블: {req.get('table_name')}  \n"
-            f"- 인원: {req.get('party_size')}명"
-            + (f"  \n- 요청: {req.get('note')}" if req.get("note") else "")
-        )
+        if "reservation_id" in req:        # 취소 확인
+            st.warning(f"**예약 #{req['reservation_id']}을(를) 정말 취소할까요?**")
+        else:                              # 신청 확인
+            st.info(
+                f"**이대로 예약을 신청할까요?**\n\n"
+                f"- 날짜: {req.get('res_date')}  \n"
+                f"- 시간: {req.get('res_time')}  \n"
+                f"- 테이블: {req.get('table_name')}  \n"
+                f"- 인원: {req.get('party_size')}명"
+                + (f"  \n- 요청: {req.get('note')}" if req.get("note") else "")
+            )
         left, right = st.columns(2)
-        if left.button("✅ 예약 신청", use_container_width=True):
+        if left.button("✅ 진행", use_container_width=True):
             with st.spinner("신청 중…"):
                 r = requests.post(f"{APP_URL}/confirm",
                                   json={"thread_id": customer["thread_id"], "approved": True},
@@ -89,7 +107,7 @@ if st.session_state.pending:
                 r.raise_for_status()
                 take(r.json())
             st.rerun()
-        if right.button("↩️ 조건 바꾸기", use_container_width=True):
+        if right.button("↩️ 아니요, 다시 이야기할게요", use_container_width=True):
             with st.spinner("전달 중…"):
                 r = requests.post(f"{APP_URL}/confirm",
                                   json={"thread_id": customer["thread_id"], "approved": False,
