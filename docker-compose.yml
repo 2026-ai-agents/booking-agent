@@ -6,6 +6,7 @@ services:
       POSTGRES_PASSWORD: booking
       POSTGRES_DB: bookingdb
     volumes:
+      - pgdata:/var/lib/postgresql/data          # 이름 있는 볼륨 — down/up을 넘어 생존
       - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U booking -d bookingdb"]
@@ -41,3 +42,6 @@ services:
       - "8502:8501"
     depends_on:
       - app
+
+volumes:
+  pgdata:   # 초기화는 docker compose down -v 로만 일어난다
