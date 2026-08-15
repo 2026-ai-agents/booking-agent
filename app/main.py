@@ -10,6 +10,7 @@ confirmed/declined)이다. 그래프는 멈추지 않는다 — 행이 바뀔 �
 """
 
 import os
+import re
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -22,7 +23,7 @@ from agent.tools import DATABASE_URL
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "changeme")
 
-app = FastAPI(title="booking-agent", version="1.0")
+app = FastAPI(title="booking-agent", version="1.1")
 
 
 @app.get("/health")
@@ -35,6 +36,18 @@ class LoginBody(BaseModel):
     phone: str = Field(min_length=4)
 
 
+def normalize_phone(raw: str) -> str:
+    """숫자만 남긴다 — 010-1111-2222와 01011112222는 같은 손님이다."""
+    return re.sub(r"\D", "", raw)
+
+
+def format_phone(digits: str) -> str:
+    """저장은 숫자만, 표시는 익숙한 모양으로."""
+    if len(digits) == 11:
+        return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+    return digits
+
+
 @app.post("/login")
 def login(body: LoginBody):
     """이름+전화로 손님을 찾거나 만든다. 같은 전화는 언제나 같은 손님이다."""
@@ -43,11 +56,31 @@ def login(body: LoginBody):
             """INSERT INTO customers (name, phone) VALUES (%s, %s)
                ON CONFLICT (phone) DO UPDATE SET name = EXCLUDED.name
                RETURNING id, name""",
-            (body.name, body.phone),
+            (body.name, normalize_phone(body.phone)),
         ).fetchone()
         conn.commit()
     customer_id, name = row
     return {"customer_id": customer_id, "name": name, "thread_id": f"cust-{customer_id}"}
+
+
+@app.get("/history/{thread_id}")
+def history(thread_id: str):
+    """재로그인한 손님의 대화를 checkpointer에서 복원한다.
+
+    기억은 서버(pg)에 있으므로, 화면은 여기서 다시 그리면 된다. 확인 카드를
+    띄운 채 떠났던 손님에게는 대기 중인 interrupt까지 그대로 돌려준다.
+    """
+    snapshot = graph.get_state({"configurable": {"thread_id": thread_id}})
+    messages = [
+        {"role": m["role"], "content": m["content"]}
+        for m in snapshot.values.get("messages", [])
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
+    pending = None
+    for task in snapshot.tasks:
+        if task.interrupts:
+            pending = task.interrupts[0].value
+    return {"messages": messages, "interrupt": pending}
 
 
 @app.get("/reservations/{customer_id}")
@@ -136,7 +169,7 @@ def admin_reservations(status: str | None = None):
         ).fetchall()
     return {"reservations": [
         {"reservation_id": r[0], "res_date": str(r[1]), "res_time": str(r[2])[:5],
-         "table": r[3], "customer": r[4], "phone": r[5],
+         "table": r[3], "customer": r[4], "phone": format_phone(r[5]),
          "party_size": r[6], "status": r[7], "note": r[8]}
         for r in rows
     ]}

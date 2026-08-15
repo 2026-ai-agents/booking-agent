@@ -13,8 +13,8 @@ INSERT INTO dining_tables (name, capacity, location) VALUES
     ('룸2',   10, '룸');
 
 INSERT INTO customers (name, phone) VALUES
-    ('김서연', '010-1111-2222'),
-    ('박지훈', '010-3333-4444');
+    ('김서연', '01011112222'),
+    ('박지훈', '01033334444');
 
 INSERT INTO reservations (customer_id, table_id, res_date, res_time, party_size, status, decided_at) VALUES
     (1, (SELECT id FROM dining_tables WHERE name = '홀1'),
