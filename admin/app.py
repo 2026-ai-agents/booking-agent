@@ -1,8 +1,10 @@
-"""booking-agent admin — 사장 운영 화면 (v1.0). 손님 화면과 완전히 다른 UI다.
+"""booking-agent admin — 사장 운영 화면. 손님 화면과 완전히 다른 UI다.
 
-비밀번호(.env의 ADMIN_PASSWORD) 하나로 들어오는 수업용 간이 인증.
-[예약 관리] 탭은 승인/거절 워크플로(도메인 상태 머신)를, [운영 상담]
-탭은 사장 어시스턴트(고정 도구 + 읽기 전용 SQL 도구)를 제공한다.
+비밀번호(.env의 ADMIN_PASSWORD)는 로그인 한 번에만 쓰고, 이후 왕복은
+발급받은 세션 토큰으로 한다. 토큰은 URL에 실려 새로고침을 살아남는다
+(비밀번호는 URL에 싣지 않는다). [예약 관리] 탭은 승인/거절 워크플로
+(도메인 상태 머신)를, [운영 상담] 탭은 사장 어시스턴트(고정 도구 +
+읽기 전용 SQL 도구)를 제공한다.
 """
 
 import os
@@ -17,26 +19,34 @@ st.set_page_config(page_title="소나무 — 사장", page_icon="🧑‍🍳", l
 
 
 def api(method: str, path: str, **kwargs):
-    headers = {"x-admin-password": st.session_state.get("password", "")}
+    headers = {"x-admin-token": st.session_state.get("token", "")}
     r = requests.request(method, f"{APP_URL}{path}", headers=headers, timeout=120, **kwargs)
     r.raise_for_status()
     return r.json()
 
 
-# ── 로그인: 비밀번호 하나 ────────────────────────────────────────────
-if "password" not in st.session_state:
+# ── 새로고침 복원: URL의 세션 토큰으로 로그인을 되살린다 ──────────────
+if "token" not in st.session_state and st.query_params.get("token"):
+    st.session_state.token = st.query_params["token"]
+    try:
+        api("GET", "/admin/reservations")
+    except requests.HTTPError:      # app 재시작 등으로 만료된 토큰
+        del st.session_state.token
+        st.query_params.clear()
+
+# ── 로그인: 비밀번호 → 세션 토큰 발급 ────────────────────────────────
+if "token" not in st.session_state:
     st.title("🧑‍🍳 소나무 — 사장 화면")
     with st.form("login"):
         password = st.text_input("관리자 비밀번호", type="password")
         ok = st.form_submit_button("입장", use_container_width=True)
     if ok:
-        st.session_state.password = password
-        try:
-            api("GET", "/admin/reservations")
-        except requests.HTTPError:
-            del st.session_state.password
+        r = requests.post(f"{APP_URL}/admin/login", json={"password": password}, timeout=10)
+        if r.status_code != 200:
             st.error("비밀번호가 틀렸습니다.")
             st.stop()
+        st.session_state.token = r.json()["token"]
+        st.query_params["token"] = st.session_state.token
         st.rerun()
     st.stop()
 
