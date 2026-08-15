@@ -1,4 +1,4 @@
-"""booking-agent ui — 손님 예약 화면 (v0.3).
+"""booking-agent ui — 손님 예약 화면.
 
 로그인(이름+전화, 인증이 아니라 식별)을 거치면 예약 상담 채팅이 열린다.
 thread는 손님마다 하나(cust-<id>)라 다시 로그인해도 같은 대화가 이어지고,
@@ -16,6 +16,14 @@ import streamlit as st
 APP_URL = os.environ.get("APP_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="소나무 — 예약", page_icon="🍽️")
+
+
+def app_version() -> str:
+    """버전은 서버가 안다 — 화면에 박아두면 릴리즈마다 어긋난다."""
+    try:
+        return requests.get(f"{APP_URL}/health", timeout=5).json()["version"]
+    except requests.RequestException:
+        return "?"
 
 # ── 로그인: 이름+전화가 손님 식별자다 ─────────────────────────────────
 if "customer" not in st.session_state:
@@ -49,7 +57,7 @@ def take(resp: dict) -> None:
 
 with st.sidebar:
     st.title("🍽️ 소나무 — 예약")
-    st.caption("booking-agent v0.3 · LangGraph")
+    st.caption(f"booking-agent v{app_version()} · LangGraph")
     st.write(f"**{customer['name']}** 님 · `{customer['thread_id']}`")
     if st.button("로그아웃", use_container_width=True):
         for key in ("customer", "history", "pending"):
