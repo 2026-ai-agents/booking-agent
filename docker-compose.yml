@@ -32,3 +32,12 @@ services:
       - "8501:8501"
     depends_on:
       - app
+
+  admin:
+    build: ./admin
+    environment:
+      APP_URL: http://app:8000
+    ports:
+      - "8502:8501"
+    depends_on:
+      - app
