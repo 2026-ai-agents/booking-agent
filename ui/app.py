@@ -1,8 +1,11 @@
-"""booking-agent ui — 손님 예약 화면 (v0.2).
+"""booking-agent ui — 손님 예약 화면 (v0.3).
 
 로그인(이름+전화, 인증이 아니라 식별)을 거치면 예약 상담 채팅이 열린다.
-thread는 손님마다 하나(cust-<id>)라 다시 로그인해도 같은 대화가 이어진다.
-v0.2부터 기억이 pg에 살아 서버를 재시작해도 이어진다.
+thread는 손님마다 하나(cust-<id>)라 다시 로그인해도 같은 대화가 이어지고,
+기억은 pg에 살아 서버를 재시작해도 이어진다.
+
+v0.3: 에이전트가 예약을 실행하기 직전 확인 카드가 뜬다. 서버 그래프가
+interrupt로 멈춘 것이고, 버튼의 결정이 /confirm으로 되돌아가야 이어진다.
 """
 
 import os
@@ -27,23 +30,36 @@ if "customer" not in st.session_state:
         r.raise_for_status()
         st.session_state.customer = r.json()
         st.session_state.history = []
+        st.session_state.pending = None
         st.rerun()
     st.stop()
 
 customer = st.session_state.customer
+st.session_state.setdefault("pending", None)
+
+
+def take(resp: dict) -> None:
+    """서버 응답을 두 갈래로 받는다: 답이거나, 확인 대기거나."""
+    if resp.get("interrupt"):
+        st.session_state.pending = resp["interrupt"]
+    else:
+        st.session_state.history.append(("assistant", resp["answer"]))
+        st.session_state.pending = None
+
 
 with st.sidebar:
     st.title("🍽️ 소나무 — 예약")
-    st.caption("booking-agent v0.2 · LangGraph")
+    st.caption("booking-agent v0.3 · LangGraph")
     st.write(f"**{customer['name']}** 님 · `{customer['thread_id']}`")
     if st.button("로그아웃", use_container_width=True):
-        del st.session_state.customer
-        st.session_state.history = []
+        for key in ("customer", "history", "pending"):
+            st.session_state.pop(key, None)
         st.rerun()
     st.divider()
     st.markdown(
         "대화로 예약을 잡습니다.\n\n"
         "- 날짜·시간·인원을 말하면 빈 테이블을 찾아 드립니다\n"
+        "- 예약 실행 전에 확인 카드가 뜹니다\n"
         "- 신청은 사장님 승인 후 확정됩니다"
     )
 
@@ -52,8 +68,40 @@ for role, content in st.session_state.history:
     with st.chat_message(role):
         st.markdown(content)
 
+# ── 확인 카드: 그래프가 interrupt로 멈춰 있다 ─────────────────────────
+if st.session_state.pending:
+    req = st.session_state.pending["requests"][0]
+    with st.chat_message("assistant"):
+        st.info(
+            f"**이대로 예약을 신청할까요?**\n\n"
+            f"- 날짜: {req.get('res_date')}  \n"
+            f"- 시간: {req.get('res_time')}  \n"
+            f"- 테이블: {req.get('table_name')}  \n"
+            f"- 인원: {req.get('party_size')}명"
+            + (f"  \n- 요청: {req.get('note')}" if req.get("note") else "")
+        )
+        left, right = st.columns(2)
+        if left.button("✅ 예약 신청", use_container_width=True):
+            with st.spinner("신청 중…"):
+                r = requests.post(f"{APP_URL}/confirm",
+                                  json={"thread_id": customer["thread_id"], "approved": True},
+                                  timeout=120)
+                r.raise_for_status()
+                take(r.json())
+            st.rerun()
+        if right.button("↩️ 조건 바꾸기", use_container_width=True):
+            with st.spinner("전달 중…"):
+                r = requests.post(f"{APP_URL}/confirm",
+                                  json={"thread_id": customer["thread_id"], "approved": False,
+                                        "reason": "손님이 조건을 바꾸고 싶어 한다"},
+                                  timeout=120)
+                r.raise_for_status()
+                take(r.json())
+            st.rerun()
+
 # ── 입력 → /chat 왕복 ────────────────────────────────────────────────
-if prompt := st.chat_input("예: 내일 저녁 7시에 4명 자리 있나요?"):
+if prompt := st.chat_input("예: 내일 저녁 7시에 4명 자리 있나요?",
+                           disabled=st.session_state.pending is not None):
     st.session_state.history.append(("user", prompt))
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -70,6 +118,5 @@ if prompt := st.chat_input("예: 내일 저녁 7시에 4명 자리 있나요?"):
                 timeout=120,
             )
             r.raise_for_status()
-            answer = r.json()["answer"]
-        st.markdown(answer)
-    st.session_state.history.append(("assistant", answer))
+            take(r.json())
+    st.rerun()

@@ -30,7 +30,7 @@ docker compose up --build
 | --- | --- |
 | v0.1 | 손님 예약 대화 (MemorySaver) — 재시작하면 모든 대화가 백지 |
 | v0.2 | PostgreSQL checkpointer — 재시작 생존, 상태는 SQL로 열어 읽는 행 |
-| v0.3 | (예정) 확정 직전 interrupt — 손님 최종 확인 |
+| v0.3 | 확정 직전 interrupt — 쓰기 도구 앞에서 멈추고, 사람 결정으로 갈린다 |
 | v1.0 | (예정) 관리자 입장(승인 워크플로·상담 에이전트·SQL 도구) + time-travel |
 
 ## 저장소 구조
@@ -57,6 +57,8 @@ docker compose exec app python demos/amnesia.py --probe  # 기억 확인 → 기
 docker compose restart app
 docker compose exec app python demos/amnesia.py --probe  # 재시작 후 → v0.1 백지 · v0.2 기억함
 docker compose exec app python demos/dump_checkpoint.py  # v0.2: 저장된 상태를 SQL과 그래프로 열어 읽기
+docker compose exec app python demos/approve_flow.py            # v0.3: interrupt → 승인 → 그제야 쓴다
+docker compose exec app python demos/approve_flow.py --decline  # v0.3: interrupt → 보류 → 안 쓴다
 ```
 
 ## 예약의 생애 (status)

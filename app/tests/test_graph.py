@@ -5,6 +5,7 @@ import uuid
 
 import psycopg
 import pytest
+from langgraph.types import Command
 
 from agent import graph as graph_module
 from agent.tools import DATABASE_URL
@@ -52,7 +53,10 @@ def test_tool_roundtrip_injects_identity(monkeypatch):
         )]),
         fake_response(content="접수되었습니다. 사장님 승인 후 확정됩니다."),
     ])
-    result = graph_module.graph.invoke(state("모레 5시에 5명요"), cfg())
+    config = cfg()
+    graph_module.graph.invoke(state("모레 5시에 5명요"), config)
+    # v0.3부터 쓰기는 확인을 거친다 — 승인해야 도구가 실행된다
+    result = graph_module.graph.invoke(Command(resume={"approved": True}), config)
     tool_msg = [m for m in result["messages"] if m.get("role") == "tool"][0]
     reservation_id = json.loads(tool_msg["content"])["reservation_id"]
     with psycopg.connect(DATABASE_URL) as conn:
