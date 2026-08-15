@@ -62,9 +62,18 @@ def test_stats_counts_by_status():
 # ── /admin API: 간이 인증 + 상태 머신 ────────────────────────────────
 
 def test_admin_requires_password():
-    assert client.get("/admin/reservations").status_code == 422        # 헤더 자체가 없음
+    assert client.get("/admin/reservations").status_code == 401        # 아무 인증도 없음
     assert client.get("/admin/reservations",
                       headers={"x-admin-password": "wrong"}).status_code == 401
+
+
+def test_admin_login_issues_working_token():
+    assert client.post("/admin/login", json={"password": "wrong"}).status_code == 401
+    token = client.post("/admin/login", json={"password": "changeme"}).json()["token"]
+    assert client.get("/admin/reservations",
+                      headers={"x-admin-token": token}).status_code == 200
+    assert client.get("/admin/reservations",
+                      headers={"x-admin-token": "bogus"}).status_code == 401
 
 
 def make_requested() -> int:

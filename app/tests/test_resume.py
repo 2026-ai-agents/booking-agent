@@ -51,3 +51,10 @@ def test_history_restores_pending_confirm_card(monkeypatch):
 def test_empty_thread_restores_nothing():
     restored = client.get(f"/history/never-{uuid.uuid4().hex[:6]}").json()
     assert restored == {"messages": [], "interrupt": None}
+
+
+def test_customer_lookup_restores_login():
+    """새로고침 복원의 근거 — URL의 id만으로 세션을 되살린다."""
+    body = client.get("/customer/1").json()
+    assert body == {"customer_id": 1, "name": "김서연", "thread_id": "cust-1"}
+    assert client.get("/customer/99999").status_code == 404
