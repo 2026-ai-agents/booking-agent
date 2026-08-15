@@ -8,7 +8,7 @@ v1.0(관리자 입장 + time-travel)으로 자란다. 이 문서는 이 저장�
 ## 실행·검증 (전부 컨테이너에서)
 
 ```sh
-docker compose up --build          # app(8000) · ui(8501) · db 기동
+docker compose up --build          # app(8000) · ui(8501) · admin(8502) · db 기동
 docker compose exec app pytest     # 유닛 테스트 — LLM은 각본 대역, db는 진짜
 docker compose exec app python demos/amnesia.py   # 시연은 app/demos/
 ```
@@ -32,6 +32,8 @@ docker compose exec app python demos/amnesia.py   # 시연은 app/demos/
 - 도구는 pydantic 모델 + `run_tool` 관문 하나. 에러도 결과로 돌려준다.
   **신원(customer_id)은 LLM 인자가 아니라 상태에서 주입한다**
 - 예약 status는 requested/confirmed/declined/cancelled 네 값뿐
+- 두 "승인"을 섞지 않는다: 손님 확인은 interrupt, 사장 승인은 상태 머신
+- run_sql의 세 겹 방어(SELECT 한 문장·자동 LIMIT·READ ONLY)를 깎지 않는다
 - 데모 스크립트는 결정적이거나 사고 재현이 목적임을 docstring에 밝힌다
 - 새 기능에는 테스트를 함께. `tests/conftest.py`의 각본 대역을 쓰고,
   쓰기 테스트는 2099년 날짜를 쓰며 정리(fixture)까지 책임진다
