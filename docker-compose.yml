@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: booking
+      POSTGRES_DB: bookingdb
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d bookingdb"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  app:
+    build: ./app
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://booking:booking@db:5432/bookingdb
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ui:
+    build: ./ui
+    environment:
+      APP_URL: http://app:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - app
