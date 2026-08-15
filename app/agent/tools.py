@@ -99,9 +99,54 @@ def request_reservation(args: RequestReservationArgs, customer_id: int) -> dict:
     }
 
 
+class MyReservationsArgs(BaseModel):
+    """이 손님의 예약 목록을 상태와 함께 조회한다 (오늘 이후)."""
+
+    include_past: bool = Field(default=False, description="지난 예약도 포함할지")
+
+
+def my_reservations(args: MyReservationsArgs, customer_id: int) -> dict:
+    where = "" if args.include_past else "AND r.res_date >= CURRENT_DATE"
+    with psycopg.connect(DATABASE_URL) as conn:
+        rows = conn.execute(
+            f"""SELECT r.id, r.res_date, r.res_time, t.name, r.party_size, r.status, r.note
+                FROM reservations r JOIN dining_tables t ON t.id = r.table_id
+                WHERE r.customer_id = %s {where}
+                ORDER BY r.res_date, r.res_time""",
+            (customer_id,),
+        ).fetchall()
+    return {"reservations": [
+        {"reservation_id": r[0], "res_date": str(r[1]), "res_time": str(r[2])[:5],
+         "table": r[3], "party_size": r[4], "status": r[5], "note": r[6]}
+        for r in rows
+    ]}
+
+
+class CancelReservationArgs(BaseModel):
+    """이 손님 본인의 예약을 취소한다. 취소 전 my_reservations로 id를 확인하라."""
+
+    reservation_id: int = Field(description="취소할 예약 id (my_reservations 결과의 것)")
+
+
+def cancel_reservation(args: CancelReservationArgs, customer_id: int) -> dict:
+    with psycopg.connect(DATABASE_URL) as conn:
+        row = conn.execute(
+            """UPDATE reservations SET status = 'cancelled'
+               WHERE id = %s AND customer_id = %s AND status IN ('requested', 'confirmed')
+               RETURNING id""",
+            (args.reservation_id, customer_id),
+        ).fetchone()
+        conn.commit()
+    if row is None:
+        return {"error": "취소할 수 없다 — 본인 예약이 아니거나 이미 취소/거절된 건이다."}
+    return {"reservation_id": row[0], "status": "cancelled"}
+
+
 REGISTRY: dict[str, tuple[type[BaseModel], object]] = {
     "check_availability": (CheckAvailabilityArgs, check_availability),
     "request_reservation": (RequestReservationArgs, request_reservation),
+    "my_reservations": (MyReservationsArgs, my_reservations),
+    "cancel_reservation": (CancelReservationArgs, cancel_reservation),
 }
 
 

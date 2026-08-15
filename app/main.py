@@ -46,6 +46,24 @@ def login(body: LoginBody):
     return {"customer_id": customer_id, "name": name, "thread_id": f"cust-{customer_id}"}
 
 
+@app.get("/reservations/{customer_id}")
+def reservations(customer_id: int):
+    """손님 화면 사이드바용 — 오늘 이후 예약과 상태."""
+    with psycopg.connect(DATABASE_URL) as conn:
+        rows = conn.execute(
+            """SELECT r.id, r.res_date, r.res_time, t.name, r.party_size, r.status
+               FROM reservations r JOIN dining_tables t ON t.id = r.table_id
+               WHERE r.customer_id = %s AND r.res_date >= CURRENT_DATE
+               ORDER BY r.res_date, r.res_time""",
+            (customer_id,),
+        ).fetchall()
+    return {"reservations": [
+        {"reservation_id": r[0], "res_date": str(r[1]), "res_time": str(r[2])[:5],
+         "table": r[3], "party_size": r[4], "status": r[5]}
+        for r in rows
+    ]}
+
+
 class ChatBody(BaseModel):
     customer_id: int
     customer_name: str = "손님"

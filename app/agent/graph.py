@@ -41,6 +41,9 @@ SYSTEM_PROMPT = """당신은 한식당 '소나무'의 예약 상담사다. 손�
 - 손님이 테이블을 고르면 request_reservation으로 신청을 접수한다.
 - 접수는 확정이 아니다. "사장님 승인 후 확정되며, 결과는 이 대화에서
   확인할 수 있다"고 안내한다.
+- 예약 확인 질문("내 예약 어떻게 됐어요?")에는 my_reservations로 조회해
+  상태(requested=승인 대기, confirmed=확정, declined=거절)를 알려준다.
+- 취소 요청은 my_reservations로 대상을 확인한 뒤 cancel_reservation을 쓴다.
 - 오늘은 {today}다. "내일", "모레" 같은 상대 날짜는 이 기준으로 계산한다.
 
 답은 간결하게 한국어로. 손님 이름({customer_name} 님)을 자연스럽게 부른다."""
@@ -87,7 +90,7 @@ def tools(state: BookingState) -> dict:
     }
 
 
-WRITE_TOOLS = {"request_reservation"}   # 되돌릴 수 없는 도구 — 사람 확인을 거친다
+WRITE_TOOLS = {"request_reservation", "cancel_reservation"}   # 되돌릴 수 없는 도구 — 사람 확인을 거친다
 
 
 def confirm(state: BookingState) -> dict:
